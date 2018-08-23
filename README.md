@@ -3,6 +3,10 @@ off-targeting assessment of Cas9 gRNAs
 
 ## CRISPRspec and CRISPRoff scores computation pipeline v1.0 
 
+### Copyright
+
+Copyright 2018 by the contributors (see AUTHORS file)
+
 ### Prerequisites 
 Python 2.7 
 Biopython

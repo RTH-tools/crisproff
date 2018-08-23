@@ -15,13 +15,12 @@
 #  GNU General Public License for more details.
 #
 #  You should have received a copy of the GNU General Public License
-#  along with this script, see file LICENSE.
+#  along with this script, see file COPYING.
 #  If not, see <http://www.gnu.org/licenses/>.
 ##########################################################################
 
-## Generate CRISPRoff CRISPRspec Azimuth scores for off-targeting assessment
-## and other parameters for efficiency prediction
-__version__ = "1.0"
+## Generate CRISPRoff CRISPRspec scores for off-targeting assessment
+__version__ = "1.1"
 
 import sys, re, os, pickle, subprocess, argparse, gzip
 from math import exp
@@ -84,7 +83,7 @@ def get_rnafold_eng(seq, rid="temp_grna_id"):
             sys.stderr.write("#ERROR:RNAfold run went wrong: "+cmd+"; "+p[1]+"\n")
             exit()
         grna_folding_engs[seq] = no_constraint_eng
-
+        #print(seq,no_constraint_eng)
     return grna_folding_engs[seq]
 
 # Stacking energy is distributed to positions only for interior loops
@@ -196,16 +195,22 @@ def get_eng(grna_seq, off_seq, score_func, GU_allowed=False, pos_weight=False, p
 
     return off
 
+#################################################################
+# TODO: Turn the ontarget and offSeq into class for ease of understanding the code #
+
 ## Compute POFF for the given grna and its off-targets ##
 PAR_BETA = 1.000000 / (0.001987 * 310.150000)
-def compute_CRISPRspec(ontarget, offSeqs, score_func, GU_allowed=False, pos_weight=False, pam_corr=False, grna_folding=False, dna_opening=False, dna_pos_wgh=False):
+def compute_CRISPRspec(ontarget, offSeqs, score_func, GU_allowed=False, pos_weight=False, pam_corr=False, grna_folding=False, dna_opening=False, dna_pos_wgh=False, ignored_chromosomes=set()):
     pf = 0.000000
     on = 0.000000
     CRISPRoff_scores = []
 
     for offSeq in offSeqs:
         offSeq_eng = get_eng(ontarget[0], offSeq[0], score_func,  GU_allowed=GU_allowed, pos_weight=pos_weight, pam_corr=pam_corr, grna_folding=grna_folding, dna_opening=dna_opening, dna_pos_wgh=dna_pos_wgh)
-        pf = pf + exp(PAR_BETA * offSeq_eng)
+        if offSeq[1] not in ignored_chromosomes:
+            pf = pf + exp(PAR_BETA * offSeq_eng)
+        else:
+            sys.stderr.write("#WARNING: This off-target sequence is ignored when computing CRISPRspec: '"+"|".join([str(x) for x in offSeq])+"'.\n")
         CRISPRoff_scores.append((offSeq,offSeq_eng))
 
     on_eng = get_eng(ontarget[0], ontarget[0], score_func, GU_allowed=GU_allowed, pos_weight=pos_weight, pam_corr=pam_corr, grna_folding=grna_folding, dna_opening=dna_opening, dna_pos_wgh=dna_pos_wgh)
@@ -239,10 +244,7 @@ def get_ontarget_scores_30nt(ontargets_30):
 # Result file must have been generated with -p3 option
 # grna is the sequence without the PAM addition.
 # If PAM is added last parameter must be set to False
-def read_risearch_results(guideSeq,ris_file, noPAM_given=True, count_mms=False):
-    on_targets = []
-    offSeqs = []
-    off_counts = {"GG":[0]*7,"AG":[0]*7,"GA":[0]*7}
+def read_risearch_results(guideSeq,ris_file, noPAM_given=True, count_mms=False, on_targets = [], offSeqs = [], off_counts = {"GG":[0]*7,"AG":[0]*7,"GA":[0]*7}):
     inf = gzip.open(ris_file) if ris_file.endswith(".gz") else open(ris_file)
     x = 0
     for line in inf:
@@ -325,7 +327,7 @@ def read_standard_offtargets_input(guideSeq, in_file, count_mms=False):
             offseq = cols[0].upper()
             PAM = offseq[-3:]
             if PAM[1:3] in ["GG","AG","GA"]:
-                mm_count = sum ( offseq[i] != guideSeq[i] for i in range(len(offseq)) )
+                mm_count = sum ( offseq[i] != guideSeq[i] for i in range(len(offseq)-3) )
                 # determine and save the number of mismatches for this guide
                 if count_mms:
                     if mm_count<7:
@@ -339,10 +341,24 @@ def read_standard_offtargets_input(guideSeq, in_file, count_mms=False):
     return  offSeqs, off_counts, on_targets
 
 #Read given off-target file whether its risearch casoff or standard regular new-line seperated file
-def read_offtargets_file(guideSeq, offtargets_file, noPAM_given=False, count_mms=False):
+def read_offtargets_file(guideSeq, offtargets_file, noPAM_given=False, count_mms=False, chromosome_names=None):
     if "risearch" in offtargets_file:
-        sys.stdout.write('#RUNNING: reading given risearch output file "'+offtargets_file+'".\n')
-        return read_risearch_results(guideSeq,offtargets_file, noPAM_given=noPAM_given, count_mms=count_mms)
+        if chromosome_names==None:
+            sys.stdout.write('#RUNNING: reading given risearch output file "'+offtargets_file+'".\n')
+            return read_risearch_results(guideSeq,offtargets_file, noPAM_given=noPAM_given, count_mms=count_mms)
+        else: # READ from multiple files
+            chr_inf = gzip.open(chromosome_names) if chromosome_names.endswith(".gz") else open(chromosome_names)
+            on_targets = []
+            offSeqs = []
+            off_counts = {"GG":[0]*7,"AG":[0]*7,"GA":[0]*7}
+            ris_dir = "/".join(offtargets_file.split("/")[:-1])
+            ris_file = offtargets_file.split("/")[-1]
+            for chrid in chr_inf:
+                sys.stdout.write('#RUNNING: reading given risearch output file "'+"/".join([ris_dir,chrid.rstrip(),ris_file])+'".\n')
+                if os.path.isfile("/".join([ris_dir,chrid.rstrip(),ris_file])):
+                    offSeqs, off_counts, on_targets = read_risearch_results(guideSeq, "/".join([ris_dir,chrid.rstrip(),ris_file]), noPAM_given=noPAM_given, count_mms=count_mms,  on_targets = on_targets, offSeqs = offSeqs, off_counts = off_counts)
+            chr_inf.close()
+            return offSeqs, off_counts, on_targets
     else:
         inf = gzip.open(offtargets_file) if offtargets_file.endswith(".gz") else open(offtargets_file)
         casoff = True if inf.readline().startswith("#Bulge") else False
@@ -449,12 +465,12 @@ def get_energy_features_for_guides(guideSeqs):
 
 # setup the argument parser
 def get_parser():
-    parser = argparse.ArgumentParser(description="CRISPR-OFF Webserver - Computational Cas9 off-targeting assessment / CRISPRspec and CRISPRoff scores computation pipeline v1.0")
-    grna_input = parser.add_mutually_exclusive_group(required=True)
+    parser = argparse.ArgumentParser(description="CRISPR-OFF Webserver - Computational Cas9 off-targeting assessment / CRISPRspec and CRISPRoff scores computation pipeline v"+__version__)
+    grna_input = parser.add_argument_group("# gRNA/on-target sequence(s)")
     grna_input.add_argument("--guides", metavar="<file>", type=str,
                         help="Fasta file for gRNA sequences (each gRNA is 23nt=20nt+PAM) or sequence file (fasta or unformatted) of the target to design gRNAs for.")
     grna_input.add_argument("--guide", metavar="<seq>", type=str,
-                        help="gRNA sequence (23nt, 20nt+PAM)")
+                        help="single gRNA sequence to analyse (23nt, 20nt+PAM)")
 
     key_settings = parser.add_argument_group('# Key Settings')
     key_settings.add_argument("--duplex_energy_params", metavar='<pickle file>', type=str,
@@ -465,10 +481,14 @@ def get_parser():
                         default='RNAfold')
 
     specificity_analysis = parser.add_argument_group('# Analyze the specificity of given on-target sequences')
-    specificity_analysis.add_argument("--offtargets", metavar="<off-target file>", type=str,
-                         help="Targets file to read off-targets from. It could be RIsearch2 -p3 or Cas-OFFinder result files, or plain offtargets file where off-target sequences are line-seperated. Note that on-target sequence always needs to be part of the given target data.", default=None)
-    specificity_analysis.add_argument("--risearch_results_folder", metavar="<path>", type=str,
-                         help="Path to the folder with risearch -p3 output files (Ignores the file given by --offtargets and looks for risearch results in the given folder)", default=None)
+    specificity_analysis.add_argument("--offtargets", metavar="<off-target file>", type=str, default=None,
+                         help="Targets file to read off-targets from. It could be RIsearch2 -p3 or Cas-OFFinder result files, or plain offtargets file where off-target sequences are line-seperated. Note that on-target sequence always needs to be part of the given target data.")
+    specificity_analysis.add_argument("--risearch_results_folder", metavar="<path>", type=str, default=None,
+                         help="Path to the folder with risearch -p3 output files (Ignores the file given by --offtargets and looks for risearch results in the given folder)")
+    specificity_analysis.add_argument("--chromosome_names", metavar="<file>", type=str, default=None,
+                         help="File with the name of the chromosomes (new-line seperated) to be able to locate chromosome-predicted risearch result files. When passed, risearch result files have to be located within chromosome-named sub-directories under the directory given by --risearch_results_folder")
+    specificity_analysis.add_argument("--ignored_chromosomes", metavar="<file>", type=str, default=None,
+                         help="Ignore chromosomes in the given list (new-line seperated) when computing the CRISPRspec specificity score. For example, certain haplotypes can be ignored for more accurate specificity computation.")
     specificity_analysis.add_argument("--no_azimuth", action="store_true",
                          help="Don't report azimuth on-target efficiency prediction scores. (Pass this argument if azimuth python package is not installed in your system.)")
     specificity_analysis.add_argument("--no_off_target_counts", action="store_true",
@@ -477,6 +497,10 @@ def get_parser():
                          help="Sort off-targets in the report based on computed CRISPRoff score. (default: Unsorted report)")
     specificity_analysis.add_argument("--report_top", metavar="<int>", type=int, default=None,
                          help="Report only top X off-targets.")
+    specificity_analysis.add_argument("--evaluate_all", action="store_true",
+                         help="Pass this to evaluate all gRNAs even though their on-target is not part of the given target predictions. (default: Ignore gRNAs with no on-target)")
+    specificity_analysis.add_argument("--comment_out_NAs", action="store_true",
+                         help="Comment out the lines with no genomic coordinate info in CRISPRoff result files. Required for further bed-intersect within the webserver.")
 
     result_output = parser.add_argument_group("# Output options")
     result_output.add_argument("--specificity_report", metavar='<file>', type=str,
@@ -507,6 +531,7 @@ def main():
     # STEP 2: Save the energy parameters and the path to RNAfold executable
     read_energy_parameters(args.duplex_energy_params)
     sys.stdout.write('#STEP 2: energy parameters parsed from "'+args.duplex_energy_params+'"\n')
+    global RNAFOLD_EXE
     RNAFOLD_EXE = args.rnafold_x
 
     # STEP 3: READ the guide sequences
@@ -553,67 +578,102 @@ def main():
 
     # STEP 5: off-target analysis of gRNAs
     if args.risearch_results_folder != None or args.offtargets!=None:
-        #Specificty analysis results, including CRISPRoff and CRISPRspec results
+        ignored_chromosomes=set()
+        if args.ignored_chromosomes!=None:
+            if os.path.isfile(args.ignored_chromosomes):
+                with open(args.ignored_chromosomes) as inf:
+                    for line in inf:
+                        ignored_chromosomes.add(line.rstrip())
+            else:
+                sys.stdout.write('#STEP 5: Given --ignored_chromosomes file is not readable.\n')
+                exit()
+
+        #Specificity analysis results, including CRISPRoff and CRISPRspec results
         outf = sys.stdout
         if args.specificity_report=="stderr":
             outf = sys.stderr
         elif args.specificity_report!="stdout":
             outf = gzip.open(args.specificity_report,"w") if args.specificity_report.endswith(".gz") else open(args.specificity_report,"w")
 
-        # Specificty report output
-        outf.write('\t'.join(["Guide_ID","Guide_sequence","On_target_30nt","Genomic_position","CRISPRspec_specificty_score","Azimuth_ontarget_score","MM_counts","MM_detailed\n"]))
+        # Specificity report output
+        outf.write('\t'.join(["Guide_ID","Guide_sequence","On_target_30nt","Genomic_position","CRISPRspec_specificity_score","Azimuth_ontarget_score","MM_counts","MM_detailed\n"]))
         # iterate over all guides
         for guideID, guideSeq in guideSeqs.items():
+            if args.guides!=None and args.guide!=None and guideSeq!=args.guide:
+                continue
             offtargets_file = os.path.join(args.risearch_results_folder, "risearch_"+guideID+".out.gz") if args.risearch_results_folder!=None else args.offtargets
-            sys.stdout.write('#STEP 5.1: off-targets are read from "'+offtargets_file+'".\n')
-            if os.path.isfile(offtargets_file):
-                offSeqs, off_counts, ontargets = read_offtargets_file(guideSeq, offtargets_file, noPAM_given=(len(guideSeq)<23), count_mms=(args.no_off_target_counts==False))
-                if len(ontargets)>0:
-                    azimuth_score_dic = {} if args.no_azimuth else get_ontarget_scores_30nt([ontarget[1] for ontarget in ontargets if len(ontarget[1])==30])
-                    for i in range(len(ontargets)):
-                        on_target, on_target_30, tc, ts, te, tst = ontargets[i]
-                        assert guideSeq[:20]==on_target[:20]
+            sys.stdout.write('#STEP 5.1: off-targets are read from "'+(offtargets_file if args.risearch_results_folder==None else args.risearch_results_folder)+'".\n')
+            if os.path.isfile(offtargets_file) or (args.risearch_results_folder!=None and args.chromosome_names!=None):
+                offSeqs, off_counts, ontargets = read_offtargets_file(guideSeq, offtargets_file, noPAM_given=(len(guideSeq)<23), count_mms=(args.no_off_target_counts==False), chromosome_names=args.chromosome_names)
 
-                        # Compute azimuth scores
-                        azimuth_on = str(azimuth_score_dic[on_target_30]) if on_target_30 in azimuth_score_dic else "NA"
-
-                        # Prepare off-target set
-                        offs = [offSeq for offSeq in offSeqs]
-                        for j in [k for k in range(len(ontargets)) if k!=i]:
-                            off_on_target, off_on_target_30, off_tc, off_ts, off_te, off_tst = ontargets[j]
-                            offs.append((off_on_target, off_tc, off_ts, off_te, off_tst))
-
-                        #Compute CRISPRoff and CRISPRspec
-                        on_prob, CRISPRoff_scored_offs = compute_CRISPRspec(ontargets[i], offs, calcRNADNAenergy, GU_allowed=False, pos_weight=True, pam_corr=True, grna_folding=True, dna_opening=True, dna_pos_wgh=False)
-                        CRISPRspec = -1.0 * log10(on_prob) if on_prob>0 else "+Infinite"
-
+                # If there are no on-targets for this guide add it manually to target space or ignore based on --evaluate_all
+                if len(ontargets)==0:
+                    if args.evaluate_all:
+                        sys.stderr.write("WARNING: on-target couldn't be found for "+guideID+":"+guideSeq+". Evaluating this guide by adding the guide sequence to the target space.\n")
+                        ontargets.append((guideSeq,guideSeq,None,None,None,None))
+                    else:
+                        sys.stderr.write("WARNING: on-target couldn't be found for "+guideID+":"+guideSeq+". Skipping this guide.\n")
                         # Write CRISPRoff results
                         if args.CRISPRoff_scores_folder != None:
                             if os.path.isdir(args.CRISPRoff_scores_folder):
-                                with open(os.path.join(args.CRISPRoff_scores_folder,on_target+".CRISPRoff.tsv"),"wb") as score_outf:
-                                    score_outf.write('# CRISPRoff scored off-targets of "')
-                                    score_outf.write(",".join([on_target]+['NA' if v is None else v for v in [tc, ts, te, tst]])+'"')
-                                    score_outf.write(' (Off-targets read from "'+offtargets_file+'").\n')
-                                    score_outf.write("# Off-targets are given in bed-like format\n")
-                                    score_outf.write("\t".join(["# chromosome","start","end","off_target_seq","CRISPRoff_score","strand"])+"\n")
+                                with open(os.path.join(args.CRISPRoff_scores_folder,guideSeq+".CRISPRoff.tsv"),"wb") as score_outf:
+                                    score_outf.write('# No CRISPRoff and CRISPRspec score can be computed for "'+guideID+","+guideSeq+'"\n')
+                                    score_outf.write('# REASON: On-target sequence do not exist within"'+offtargets_file+'".\n')
+                        # Specificity report output
+                        outf.write('\t'.join([guideID,guideSeq,guideSeq, "NA", "0", "NA", "NA", "NA"+"\n"]))
+                        continue
 
-                                    report_count=0
-                                    for offtargets, CRISPRoff in sorted(CRISPRoff_scored_offs, key=lambda x:x[1], reverse=True) if args.sorted_CRISPRoff_reports else CRISPRoff_scored_offs:
-                                        report_count += 1
+                azimuth_score_dic = {} if args.no_azimuth else get_ontarget_scores_30nt([ontarget[1] for ontarget in ontargets if len(ontarget[1])==30])
+                for i in range(len(ontargets)):
+                    on_target, on_target_30, tc, ts, te, tst = ontargets[i]
+                    if tc in ignored_chromosomes:
+                        continue
+
+                    if guideSeq[:20]!=on_target[:20]:
+                        sys.stderr.write('#WEIRD ERROR: "'+guideSeq+'" should be the same as "'+on_target+'"\n')
+
+                    # Compute azimuth scores
+                    azimuth_on = str(azimuth_score_dic[on_target_30]) if on_target_30 in azimuth_score_dic else "NA"
+
+                    # Prepare off-target set
+                    offs = [offSeq for offSeq in offSeqs]
+                    for j in [k for k in range(len(ontargets)) if k!=i]:
+                        off_on_target, off_on_target_30, off_tc, off_ts, off_te, off_tst = ontargets[j]
+                        offs.append((off_on_target, off_tc, off_ts, off_te, off_tst))
+
+                    #Compute CRISPRoff and CRISPRspec
+                    on_prob, CRISPRoff_scored_offs = compute_CRISPRspec(ontargets[i], offs, calcRNADNAenergy, GU_allowed=False, pos_weight=True, pam_corr=True, grna_folding=True, dna_opening=True, dna_pos_wgh=False, ignored_chromosomes=ignored_chromosomes)
+                    CRISPRspec = -1.0 * log10(on_prob) if on_prob>0 else "+Infinite"
+
+                    # Write CRISPRoff results
+                    if args.CRISPRoff_scores_folder != None:
+                        if os.path.isdir(args.CRISPRoff_scores_folder):
+                            with open(os.path.join(args.CRISPRoff_scores_folder,on_target+".CRISPRoff.tsv"),"wb") as score_outf:
+                                score_outf.write('# CRISPRoff scored off-targets of "')
+                                score_outf.write(",".join([on_target]+['NA' if v is None else v for v in [tc, ts, te, tst]])+'"')
+                                score_outf.write(' (Off-targets read from "'+offtargets_file+'").\n')
+                                score_outf.write("# Off-targets are given in bed-like format\n")
+                                score_outf.write("\t".join(["# chromosome","start","end","off_target_seq","CRISPRoff_score","strand"])+"\n")
+
+                                report_count=0
+                                for offtargets, CRISPRoff in sorted(CRISPRoff_scored_offs, key=lambda x:x[1], reverse=True) if args.sorted_CRISPRoff_reports else CRISPRoff_scored_offs:
+                                    report_count += 1
+                                    if args.comment_out_NAs and offtargets[1]==None:
+                                        score_outf.write("#"+"\t".join(['NA' if v is None else v for v in list(offtargets[1:4])+[offtargets[0],str(CRISPRoff),offtargets[4]]])+"\n")
+                                    else:
                                         score_outf.write("\t".join(['NA' if v is None else v for v in list(offtargets[1:4])+[offtargets[0],str(CRISPRoff),offtargets[4]]])+"\n")
-                                        if args.report_top!=None and report_count==args.report_top:
-                                            break
+                                    if args.report_top!=None and report_count==args.report_top:
+                                        break
 
-                        # Prepare text for mismatch count info
-                        MM_counts = ",".join([ str(sum([ l[j] for l in off_counts.values()])) for j in range(7)])
-                        MM_detailed = ";".join(["N"+PAM+":"+",".join([ str(off_counts[PAM][j]) for j in range(7)]) for PAM in ["GG","AG","GA"]])
+                    # Prepare text for mismatch count info
+                    MM_counts = ",".join([ str(sum([ l[j] for l in off_counts.values()])) for j in range(7)])
+                    MM_detailed = ";".join(["N"+PAM+":"+",".join([ str(off_counts[PAM][j]) for j in range(7)]) for PAM in ["GG","AG","GA"]])
 
-                        # Specificty report output
-                        outf.write('\t'.join([guideID,guideSeq,on_target_30,"|".join(['NA' if v is None else v for v in [tc, ts, te, tst]]),str(CRISPRspec),azimuth_on, MM_counts, MM_detailed+"\n"]))
+                    # Specificity report output
+                    outf.write('\t'.join([guideID,guideSeq,on_target_30,"|".join(['NA' if v is None else v for v in [tc, ts, te, tst]]),str(CRISPRspec),azimuth_on, MM_counts, MM_detailed+"\n"]))
 
-                        sys.stdout.write('#STEP 5.2: Scores computed and reported for given gRNA and off-targets.\n')
-                else:
-                    sys.stderr.write("WARNING: on-target couldn't be found for "+guideID+":"+guideSeq+". Skipping this guide.\n")
+                    sys.stdout.write('#STEP 5.2: Scores computed and reported for given gRNA and off-targets.\n')
+
             else:
                 sys.stderr.write('#WARNING: Skipping "'+guideID+':'+guideSeq+'" for off-target assessment (No off-targets file or risearch result folder given).\n')
 
