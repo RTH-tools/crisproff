@@ -1,3 +1,7 @@
+##v 1.1.1 - 2018-09-06
+- Resolving a bug in on-target detection from risearch results
+- Structuring the messy stdout and stderr output
+- README.md file has been updated with example test runs.
 ##v 1.1 - 2018-08-21
 - --evaluate_all option added to evaluate gRNAs even if they have no on-targets
 - --comment_out_NAs option added for easier pasrsing of the specificty report
