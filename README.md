@@ -58,10 +58,17 @@ gRNAs, you can call the pipeline like the following.
 
 This final run should generate three files in the `crisproff/test_data/`
 folder: `test_CRISPRspec.tsv`, `GGGTGGGGGGAGTTTGCTCCTGG.CRISPRoff.tsv` and
-`GGTGGACAAGCGGCAGATAGCGG.CRISPRoff.tsv`.
+`GGTGGACAAGCGGCAGATAGCGG.CRISPRoff.tsv`. The output may be compared with that
+in crisproff/test_data.example.out.
 
 ### How to use RIsearch2 (v2.1) to generate your off-target predictions?
-You can perform your own off-target predictions using the [RIsearch2 (v2.1)](https://rth.dk/resources/risearch/) program. The program requires two input fasta files, one that includes the gRNA sequences and another one for the target genome. Example workflow about how to use the RIsearch2 program can be seen below. It is highly critical to run the RIsearch2 (v2.1) program with given options below to be able to generate the full list of off-target predictions (up to 6 mismatches) within the corresponding genome.
+You can perform your own off-target predictions using the [RIsearch2
+(v2.1)](https://rth.dk/resources/risearch/) program. The program requires two
+input fasta files, one that includes the gRNA sequences and another one for the
+target genome. Example workflow about how to use the RIsearch2 program can be
+seen below. It is highly critical to run the RIsearch2 (v2.1) program with
+given options below to be able to generate the full list of off-target
+predictions (up to 6 mismatches) within the corresponding genome.
 
 	risearch2.x -c genome.fa -o genome.suf
 	risearch2.x -q grnas.fa -i genome.suf -s 1:20 -m 6:0 -e 10000 -l 0 --noGUseed -p3
