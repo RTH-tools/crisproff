@@ -10,7 +10,9 @@ Off-targeting assessment of CRISPR-Cas9 gRNAs/on-targets
 * Vienna RNA Package (preferably 2.2.5): the script will call the RNAfold program when used
 * Python libraries (optional): azimuth, numpy
 
-Optional libraries are not necessary when you run the pipeline with "--no_azimuth" option.
+Optional libraries are not necessary when you run the pipeline with
+"--no_azimuth" option. However, without azimuth installed the pipeline won't
+report azimuth on-target efficiency prediction scores.
 
 ### Usage
 This pipeline DO NOT perform off-target predictions itself. It only computes
@@ -58,8 +60,8 @@ gRNAs, you can call the pipeline like the following.
 
 This final run should generate three files in the `crisproff/test_data/`
 folder: `test_CRISPRspec.tsv`, `GGGTGGGGGGAGTTTGCTCCTGG.CRISPRoff.tsv` and
-`GGTGGACAAGCGGCAGATAGCGG.CRISPRoff.tsv`. The output may be compared with that
-in crisproff/test_data.example.out.
+`GGTGGACAAGCGGCAGATAGCGG.CRISPRoff.tsv`. These three files should be be
+compared with that in crisproff/test_data.example.out.
 
 ### How to use RIsearch2 (v2.1) to generate your off-target predictions?
 You can perform your own off-target predictions using the [RIsearch2
