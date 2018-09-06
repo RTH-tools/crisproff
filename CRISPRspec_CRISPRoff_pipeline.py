@@ -230,7 +230,7 @@ def get_ontarget_scores_30nt(ontargets_30):
     try:
         predictions = azimuth.model_comparison.predict(sequences,None,None)
     except:
-        sys.stderr.write("Could not compute scores for "+",".join(ontargets_30)+"\n")
+        sys.stderr.write("#WARNING: Elevation error: Could not compute scores for "+",".join(ontargets_30)+"\n")
         return dict(zip(ontargets_30,[0.0]*len(ontargets_30)))
     #for i, prediction in enumerate(predictions):
     #    print sequences[i], prediction
@@ -244,7 +244,7 @@ def get_ontarget_scores_30nt(ontargets_30):
 # Result file must have been generated with -p3 option
 # grna is the sequence without the PAM addition.
 # If PAM is added last parameter must be set to False
-def read_risearch_results(guideSeq,ris_file, noPAM_given=True, count_mms=False, on_targets = [], offSeqs = [], off_counts = {"GG":[0]*7,"AG":[0]*7,"GA":[0]*7}):
+def read_risearch_results(guideSeq, ris_file, noPAM_given=True, count_mms=False, on_targets = [], offSeqs = [], off_counts = {"GG":[0]*7,"AG":[0]*7,"GA":[0]*7}):
     inf = gzip.open(ris_file) if ris_file.endswith(".gz") else open(ris_file)
     x = 0
     for line in inf:
@@ -344,8 +344,8 @@ def read_standard_offtargets_input(guideSeq, in_file, count_mms=False):
 def read_offtargets_file(guideSeq, offtargets_file, noPAM_given=False, count_mms=False, chromosome_names=None):
     if "risearch" in offtargets_file:
         if chromosome_names==None:
-            sys.stdout.write('#RUNNING: reading given risearch output file "'+offtargets_file+'".\n')
-            return read_risearch_results(guideSeq,offtargets_file, noPAM_given=noPAM_given, count_mms=count_mms)
+            sys.stdout.write('#RUNNING: reading given risearch output file "'+offtargets_file+'" for gRNA/on-target:'+guideSeq+'.\n')
+            return read_risearch_results(guideSeq, offtargets_file, noPAM_given=noPAM_given, count_mms=count_mms, on_targets = [], offSeqs = [], off_counts = {"GG":[0]*7,"AG":[0]*7,"GA":[0]*7})
         else: # READ from multiple files
             chr_inf = gzip.open(chromosome_names) if chromosome_names.endswith(".gz") else open(chromosome_names)
             on_targets = []
@@ -596,9 +596,11 @@ def main():
             outf = gzip.open(args.specificity_report,"w") if args.specificity_report.endswith(".gz") else open(args.specificity_report,"w")
 
         # Specificity report output
-        outf.write('\t'.join(["Guide_ID","Guide_sequence","On_target_30nt","Genomic_position","CRISPRspec_specificity_score","Azimuth_ontarget_score","MM_counts","MM_detailed\n"]))
+        specificity_report = '\t'.join(["Guide_ID","Guide_sequence","On_target_30nt","Genomic_position","CRISPRspec_specificity_score","Azimuth_ontarget_score","MM_counts","MM_detailed\n"])
         # iterate over all guides
         for guideID, guideSeq in guideSeqs.items():
+            offSeqs, off_counts, ontargets = None,None,None
+
             if args.guides!=None and args.guide!=None and guideSeq!=args.guide:
                 continue
             offtargets_file = os.path.join(args.risearch_results_folder, "risearch_"+guideID+".out.gz") if args.risearch_results_folder!=None else args.offtargets
@@ -620,7 +622,7 @@ def main():
                                     score_outf.write('# No CRISPRoff and CRISPRspec score can be computed for "'+guideID+","+guideSeq+'"\n')
                                     score_outf.write('# REASON: On-target sequence do not exist within"'+offtargets_file+'".\n')
                         # Specificity report output
-                        outf.write('\t'.join([guideID,guideSeq,guideSeq, "NA", "0", "NA", "NA", "NA"+"\n"]))
+                        specificity_report += '\t'.join([guideID,guideSeq,guideSeq, "NA", "0", "NA", "NA", "NA"+"\n"])
                         continue
 
                 azimuth_score_dic = {} if args.no_azimuth else get_ontarget_scores_30nt([ontarget[1] for ontarget in ontargets if len(ontarget[1])==30])
@@ -630,7 +632,7 @@ def main():
                         continue
 
                     if guideSeq[:20]!=on_target[:20]:
-                        sys.stderr.write('#WEIRD ERROR: "'+guideSeq+'" should be the same as "'+on_target+'"\n')
+                        sys.stderr.write('#WEIRD ERROR: "'+guideSeq[:20]+'" should be the same as "'+on_target[:20]+'"\n')
 
                     # Compute azimuth scores
                     azimuth_on = str(azimuth_score_dic[on_target_30]) if on_target_30 in azimuth_score_dic else "NA"
@@ -670,15 +672,22 @@ def main():
                     MM_detailed = ";".join(["N"+PAM+":"+",".join([ str(off_counts[PAM][j]) for j in range(7)]) for PAM in ["GG","AG","GA"]])
 
                     # Specificity report output
-                    outf.write('\t'.join([guideID,guideSeq,on_target_30,"|".join(['NA' if v is None else v for v in [tc, ts, te, tst]]),str(CRISPRspec),azimuth_on, MM_counts, MM_detailed+"\n"]))
+                    specificity_report += '\t'.join([guideID,guideSeq,on_target_30,"|".join(['NA' if v is None else v for v in [tc, ts, te, tst]]),str(CRISPRspec),azimuth_on, MM_counts, MM_detailed+"\n"])
 
                     sys.stdout.write('#STEP 5.2: Scores computed and reported for given gRNA and off-targets.\n')
 
             else:
                 sys.stderr.write('#WARNING: Skipping "'+guideID+':'+guideSeq+'" for off-target assessment (No off-targets file or risearch result folder given).\n')
 
-        if args.specificity_report not in ["stdout","stderr"]:
+        # Write the specificity report
+        sys.stdout.write('#STEP 5.3: Reporting the specificity scores')
+        if args.specificity_report in ["stdout","stderr"]:
+            outf.write(" below.\n\n"+specificity_report+"\n")
+        else:
+            sys.stdout.write(" and saving into '"+args.specificity_report+"' file.\n")
+            outf.write(specificity_report)
             outf.close()
+        sys.stdout.write('#STEP 5: Reporting DONE.\n')
 
     else:
         sys.stderr.write('#WARNING: Skipping STEP 5 (NO off-target assessment report for the guides). \n')
