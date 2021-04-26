@@ -1,11 +1,13 @@
+#!/usr/bin/env python3
 ########################################################################
 #    ------CRISPRspec and CRISPRoff scores computation Pipeline----
 #
-#  Copyright (c) 2018 by the contributors (see AUTHORS file)
+#  Copyright (c) 2018, 2021 by the contributors (see AUTHORS file)
 #
-#  This file is part of CRISPR-OFF webserver.
-#  This is a free software: you can redistribute it and/or modify
-#  it under the terms of the GNU General Public License as published by
+#  This file is part of CRISPRoff
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero General Public License as published by
 #  the Free Software Foundation, either version 3 of the License, or
 #  (at your option) any later version.
 #
@@ -20,7 +22,7 @@
 ##########################################################################
 
 ## Generate CRISPRoff CRISPRspec scores for off-targeting assessment
-__version__ = "1.1"
+__version__ = "1.1.2"
 
 import sys, re, os, pickle, subprocess, argparse, gzip
 from math import exp
@@ -33,25 +35,25 @@ from Bio import SeqIO
 
 ENERGY_MODELS_PICKLE_FILE = "energy_dics.pkl"
 
-RI_REV_NT_MAP = {'-':'','a':'T','A':'T','c':'G','C':'G','g':'C','G':'C',
-              't':'A','T':'A','u':'A','U':'A','n':'N','N':'N'}
+RI_REV_NT_MAP = {'-':'', 'a':'T', 'A':'T', 'c':'G', 'C':'G', 'g':'C', 'G':'C',
+              't':'A', 'T':'A', 'u':'A', 'U':'A', 'n':'N', 'N':'N'}
 
-RI_DNA_DNA_NN={'AA':{'TT':-1.00},'TT':{'AA':-1.00}, 'AT':{'TA':-0.88},'TA':{'AT':-0.58},
-            'CA':{'GT':-1.45},'TG':{'AC':-1.45}, 'GT':{'CA':-1.44},'AC':{'TG':-1.44},
-            'CT':{'GA':-1.28},'AG':{'TC':-1.28}, 'GA':{'CT':-1.30},'TC':{'AG':-1.30},
-            'CG':{'GC':-2.17}, 'GC':{'CG':-2.24}, 'GG':{'CC':-1.84},'CC':{'GG':-1.84}}
+RI_DNA_DNA_NN={'AA':{'TT':-1.00}, 'TT':{'AA':-1.00}, 'AT':{'TA':-0.88}, 'TA':{'AT':-0.58},
+            'CA':{'GT':-1.45}, 'TG':{'AC':-1.45}, 'GT':{'CA':-1.44}, 'AC':{'TG':-1.44},
+            'CT':{'GA':-1.28}, 'AG':{'TC':-1.28}, 'GA':{'CT':-1.30}, 'TC':{'AG':-1.30},
+            'CG':{'GC':-2.17}, 'GC':{'CG':-2.24}, 'GG':{'CC':-1.84}, 'CC':{'GG':-1.84}}
 
-RI_MATCH_noGU = {'A':{'A':False,'C':False,'G':False,'T':True},
-         'C':{'A':False,'C':False,'G':True,'T':False},
-         'G':{'A':False,'C':True,'G':False,'T':False},
-         'T':{'A':True,'C':False,'G':False,'T':False}}
+RI_MATCH_noGU = {'A':{'A':False, 'C':False, 'G':False, 'T':True},
+         'C':{'A':False, 'C':False, 'G':True, 'T':False},
+         'G':{'A':False, 'C':True, 'G':False, 'T':False},
+         'T':{'A':True, 'C':False, 'G':False, 'T':False}}
 
 ########## READ THE 2mer 3mer 4mer energies ###############
 RNA_DNA_internal_loop ={3:3.2, 4:3.555, 5:3.725, 6:3.975, 7:4.16, 8:4.33, 9:4.495, 10:4.6, 11:4.7}
 RNA_DNA = None
 def read_energy_parameters(ENERGY_MODELS_PICKLE_FILE = "energy_dics.pkl"):
     global RNA_DNA
-    energy_reader=open(ENERGY_MODELS_PICKLE_FILE)
+    energy_reader=open(ENERGY_MODELS_PICKLE_FILE, 'rb')
     RNA_DNA = pickle.load(energy_reader)
     energy_reader.close()
 
@@ -66,7 +68,7 @@ POS_WGH=[1.80067099242007, 1.95666668400006, 1.90472004401173, 2.13047270152512,
 DNA_POS_WGH = [1.22245576981774, 1.24561578622024, 1.37883177517399, 1.39146340276523, 1.24308180746857, 1.09598194424544, 1.0, 1.11695025382169, 1.11589045394936, 1.22243614188218, 1.21317477033274, 1.07125942316357, 1.25205871414019, 1.21445408158483, 1.20971491326295, 1.21076785001579, 1.2480898972246, 1.40301355270318, 1.41221084925493, 1.4]
 
 ######### pam correction parameters for pam-updated energy ##########
-pam_ratios={"GGG":1.0,"AGG":1.0,"CGG":1.0,"TGG":1.0,"GAG":0.9,"AAG":0.9,"CAG":0.9,"TAG":0.9,"GGA":0.8,"AGA":0.8,"CGA":0.8,"TGA":0.8, "OTHERS": 0.0}
+pam_ratios={"GGG":1.0, "AGG":1.0, "CGG":1.0, "TGG":1.0, "GAG":0.9, "AAG":0.9, "CAG":0.9, "TAG":0.9, "GGA":0.8, "AGA":0.8, "CGA":0.8, "TGA":0.8, "OTHERS": 0.0}
 pam_ratio_count = 3
 
 ########## gRNA folding #######################
@@ -76,14 +78,13 @@ def get_rnafold_eng(seq, rid="temp_grna_id"):
         no_constraint_eng = None
         l = len(seq)
         cmd = RNAFOLD_EXE
-        p = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE ,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate(input=">"+rid+"\n"+seq+"\n\n")
+        p = subprocess.Popen([cmd, '--noPS'], shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).communicate(input=">"+rid+"\n"+seq+"\n\n")
         if p[1]=="":
             no_constraint_eng = float(p[0].rstrip().split()[-1].replace('(','').replace(')',''))
         else:
             sys.stderr.write("#ERROR:RNAfold run went wrong: "+cmd+"; "+p[1]+"\n")
             exit()
         grna_folding_engs[seq] = no_constraint_eng
-        #print(seq,no_constraint_eng)
     return grna_folding_engs[seq]
 
 # Stacking energy is distributed to positions only for interior loops
@@ -97,8 +98,6 @@ def calcRNADNAenergy(guideSeq, otSeq, GU_allowed=False):
     energy = [0.0]*len(guideSeq)
 
     MATCH = RI_MATCH_noGU
-    #if not GU_allowed:
-    #    MATCH = RI_MATCH_noGU
 
     for i in range(len(seq)):
         if MATCH[guideSeq[i]][seq[i]]:
@@ -120,7 +119,6 @@ def calcRNADNAenergy(guideSeq, otSeq, GU_allowed=False):
         loop_size = (j-i)-1
         eng_con = 0
         if loop_size<3:
-            #print i,j,loop_size, guideSeq[i:j+1], seq[i:j+1]
             eng_con = RNA_DNA[loop_size][guideSeq[i:j+1]][seq[i:j+1]]
             # if there is a stack in the beginning or end AU GU penalty is still needed
             if loop_size == 0:
@@ -140,13 +138,13 @@ def calcRNADNAenergy(guideSeq, otSeq, GU_allowed=False):
 def calcDNAopeningScore(otSeq):
     seq = otSeq.upper()[:-3]
     energy = [0.0]*len(seq)
-    for i in range(1,len(seq)):
+    for i in range(1, len(seq)):
         energy[i] = float(RI_DNA_DNA_NN[seq[i-1]+seq[i]][RI_REV_NT_MAP[seq[i-1]]+RI_REV_NT_MAP[seq[i]]])
     return energy
 #################################################################################################
 
-REV_NT_MAP = {'-':'','a':'T','A':'T','c':'G','C':'G','g':'C','G':'C',
-              't':'A','T':'A','u':'A','U':'A','n':'N','N':'N'}
+REV_NT_MAP = {'-':'', 'a':'T', 'A':'T', 'c':'G', 'C':'G', 'g':'C', 'G':'C', 
+              't':'A', 'T':'A', 'u':'A', 'U':'A', 'n':'N', 'N':'N'}
 
 def rev_comp_seq(seq):
     s=''
@@ -163,7 +161,7 @@ def comp_seq(seq):
 ############# Get interaction energy ##################
 #Employ all the necessary computations on the score vector to get the final free energy
 def get_eng(grna_seq, off_seq, score_func, GU_allowed=False, pos_weight=False, pam_corr=False, grna_folding=False, dna_opening=False, dna_pos_wgh=False):
-    scores = score_func(grna_seq,off_seq, GU_allowed)
+    scores = score_func(grna_seq, off_seq, GU_allowed)
 
     if pos_weight:
         for i in range(len(scores)):
@@ -176,8 +174,6 @@ def get_eng(grna_seq, off_seq, score_func, GU_allowed=False, pos_weight=False, p
     if grna_folding:
         off += get_rnafold_eng(grna_seq[:20])
 
-    #if aa_interaction:
-    #    off += AA_NT_ENG["Arg"][off_seq[22]] + AA_NT_ENG["Arg"][off_seq[21]] + AA_NT_ENG["Lys"][REV_NT_MAP[off_seq[21]]] + AA_NT_ENG["Arg"][off_seq[17].replace("T","U")]
 
     if dna_opening:
         dna_scores = calcDNAopeningScore(off_seq)
@@ -211,12 +207,12 @@ def compute_CRISPRspec(ontarget, offSeqs, score_func, GU_allowed=False, pos_weig
             pf = pf + exp(PAR_BETA * offSeq_eng)
         else:
             sys.stderr.write("#WARNING: This off-target sequence is ignored when computing CRISPRspec: '"+"|".join([str(x) for x in offSeq])+"'.\n")
-        CRISPRoff_scores.append((offSeq,offSeq_eng))
+        CRISPRoff_scores.append((offSeq, offSeq_eng))
 
     on_eng = get_eng(ontarget[0], ontarget[0], score_func, GU_allowed=GU_allowed, pos_weight=pos_weight, pam_corr=pam_corr, grna_folding=grna_folding, dna_opening=dna_opening, dna_pos_wgh=dna_pos_wgh)
     on = exp(PAR_BETA * on_eng)
 
-    CRISPRoff_scores.append(((ontarget[0],ontarget[2],ontarget[3],ontarget[4],ontarget[5]),on_eng))
+    CRISPRoff_scores.append(((ontarget[0], ontarget[2], ontarget[3], ontarget[4], ontarget[5]), on_eng))
     return (pf/(pf+on)), CRISPRoff_scores
 
 ###############################################################
@@ -228,13 +224,11 @@ def get_ontarget_scores_30nt(ontargets_30):
     import numpy as np
     sequences = np.array(ontargets_30)
     try:
-        predictions = azimuth.model_comparison.predict(sequences,None,None)
+        predictions = azimuth.model_comparison.predict(sequences, None, None)
     except:
         sys.stderr.write("#WARNING: Elevation error: Could not compute scores for "+",".join(ontargets_30)+"\n")
-        return dict(zip(ontargets_30,[0.0]*len(ontargets_30)))
-    #for i, prediction in enumerate(predictions):
-    #    print sequences[i], prediction
-    return dict(zip(ontargets_30,list(predictions)))
+        return dict(zip(ontargets_30, [0.0]*len(ontargets_30)))
+    return dict(zip(ontargets_30, list(predictions)))
 
 
 ###############################################################
@@ -244,8 +238,8 @@ def get_ontarget_scores_30nt(ontargets_30):
 # Result file must have been generated with -p3 option
 # grna is the sequence without the PAM addition.
 # If PAM is added last parameter must be set to False
-def read_risearch_results(guideSeq, ris_file, noPAM_given=True, count_mms=False, on_targets = [], offSeqs = [], off_counts = {"GG":[0]*7,"AG":[0]*7,"GA":[0]*7}):
-    inf = gzip.open(ris_file) if ris_file.endswith(".gz") else open(ris_file)
+def read_risearch_results(guideSeq, ris_file, noPAM_given=True, count_mms=False, on_targets = [], offSeqs = [], off_counts = {"GG":[0]*7, "AG":[0]*7, "GA":[0]*7}):
+    inf = gzip.open(ris_file, 'rt') if ris_file.endswith(".gz") else open(ris_file, 'rt')
     x = 0
     for line in inf:
         x = x + 1
@@ -253,7 +247,7 @@ def read_risearch_results(guideSeq, ris_file, noPAM_given=True, count_mms=False,
         if len(cols)>11 and len(cols[10])>3 and len(cols[11])>0:
             gid, qs, qe, tc, ts, te, tst, en, ist, iseq, pamseq, preseq= cols[:12]
             PAM = comp_seq(pamseq[:3])
-            if PAM[1:3] in ["GG","AG","GA"]:
+            if PAM[1:3] in ["GG", "AG", "GA"]:
                 offseq = comp_seq(iseq)
                 if tst=="+":
                     ts = str(int(ts)-4)
@@ -270,9 +264,9 @@ def read_risearch_results(guideSeq, ris_file, noPAM_given=True, count_mms=False,
                         off_counts[PAM[1:3]][mm_count] += 1
                 if mm_count<7:
                     if (noPAM_given and (guideSeq != offseq)) or ((noPAM_given==False) and (guideSeq != offseq+PAM)):
-                        offSeqs.append(((offseq+PAM),tc,ts,te,tst))
+                        offSeqs.append(((offseq+PAM), tc, ts, te, tst))
                     else:
-                        on_targets.append(((offseq+PAM),(rev_comp_seq(preseq[:4])+offseq+comp_seq(pamseq[:6])),tc,ts,te,tst))
+                        on_targets.append(((offseq+PAM), (rev_comp_seq(preseq[:4])+offseq+comp_seq(pamseq[:6])), tc, ts, te, tst))
         else:
             sys.stderr.write("WARNING: RIsearch output line is missing columns, or info in columns.\nLINE: "+line)
     inf.close()
@@ -282,8 +276,8 @@ def read_risearch_results(guideSeq, ris_file, noPAM_given=True, count_mms=False,
 def read_casoff_results(guideSeq, casoff_file, count_mms=False):
     on_targets = []
     offSeqs = []
-    off_counts = {"GG":[0]*7,"AG":[0]*7,"GA":[0]*7}
-    inf = gzip.open(casoff_file) if casoff_file.endswith(".gz") else open(casoff_file)
+    off_counts = {"GG":[0]*7, "AG":[0]*7, "GA":[0]*7}
+    inf = gzip.open(casoff_file, 'rt') if casoff_file.endswith(".gz") else open(casoff_file, 'rt')
     x = 0
     for line in inf:
         x = x + 1
@@ -291,7 +285,7 @@ def read_casoff_results(guideSeq, casoff_file, count_mms=False):
         if line[0]!="#" and len(cols)>7 and cols[0]=="X":
             bulge_type, crRNA, DNA, chromosome, position, strand, mismatches, bulge_size = cols[:8]
             PAM = DNA.upper()[-3:]
-            if PAM[1:3] in ["GG","AG","GA"]:
+            if PAM[1:3] in ["GG", "AG", "GA"]:
                 offseq = DNA.upper()
                 mm_count = int(mismatches)
                 # determine and save the number of mismatches for this guide
@@ -302,14 +296,14 @@ def read_casoff_results(guideSeq, casoff_file, count_mms=False):
                 if mm_count<7:
                     if DNA[:len(guideSeq)]==guideSeq:
                         if strand=="+":
-                            on_targets.append(((offseq),DNA,chromosome,position,str(int(position)+len(offseq)),strand))
+                            on_targets.append(((offseq), DNA, chromosome, position, str(int(position)+len(offseq)), strand))
                         else:
-                            on_targets.append(((offseq),DNA,chromosome,str(int(position)-len(offseq)),position,strand))
+                            on_targets.append(((offseq), DNA, chromosome, str(int(position)-len(offseq)), position, strand))
                     else:
                         if strand=="+":
-                            offSeqs.append(((offseq),chromosome,position,str(int(position)+len(offseq)),strand))
+                            offSeqs.append(((offseq), chromosome, position, str(int(position)+len(offseq)), strand))
                         else:
-                            offSeqs.append(((offseq),chromosome,str(int(position)-len(offseq)),position,strand))
+                            offSeqs.append(((offseq), chromosome, str(int(position)-len(offseq)), position, strand))
     inf.close()
     return  offSeqs, off_counts, on_targets
 
@@ -317,8 +311,8 @@ def read_casoff_results(guideSeq, casoff_file, count_mms=False):
 def read_standard_offtargets_input(guideSeq, in_file, count_mms=False):
     on_targets = []
     offSeqs = []
-    off_counts = {"GG":[0]*7,"AG":[0]*7,"GA":[0]*7}
-    inf = gzip.open(in_file) if in_file.endswith(".gz") else open(in_file)
+    off_counts = {"GG":[0]*7, "AG":[0]*7, "GA":[0]*7}
+    inf = gzip.open(in_file, 'rt') if in_file.endswith(".gz") else open(in_file, 'rt')
     x = 0
     for line in inf:
         cols = line.rstrip().split("\t")
@@ -326,7 +320,7 @@ def read_standard_offtargets_input(guideSeq, in_file, count_mms=False):
             x = x + 1
             offseq = cols[0].upper()
             PAM = offseq[-3:]
-            if PAM[1:3] in ["GG","AG","GA"]:
+            if PAM[1:3] in ["GG", "AG", "GA"]:
                 mm_count = sum ( offseq[i] != guideSeq[i] for i in range(len(offseq)-3) )
                 # determine and save the number of mismatches for this guide
                 if count_mms:
@@ -334,9 +328,9 @@ def read_standard_offtargets_input(guideSeq, in_file, count_mms=False):
                         off_counts[PAM[1:3]][mm_count] += 1
                 if mm_count<7:
                     if offseq==guideSeq:
-                        on_targets.append((offseq,offseq,None,None,None,None))
+                        on_targets.append((offseq, offseq, None, None, None, None))
                     else:
-                        offSeqs.append((offseq,None,None,None,None))
+                        offSeqs.append((offseq, None, None, None, None))
     inf.close()
     return  offSeqs, off_counts, on_targets
 
@@ -347,20 +341,20 @@ def read_offtargets_file(guideSeq, offtargets_file, noPAM_given=False, count_mms
             sys.stdout.write('#RUNNING: reading given risearch output file "'+offtargets_file+'" for gRNA/on-target:'+guideSeq+'.\n')
             return read_risearch_results(guideSeq, offtargets_file, noPAM_given=noPAM_given, count_mms=count_mms, on_targets = [], offSeqs = [], off_counts = {"GG":[0]*7,"AG":[0]*7,"GA":[0]*7})
         else: # READ from multiple files
-            chr_inf = gzip.open(chromosome_names) if chromosome_names.endswith(".gz") else open(chromosome_names)
+            chr_inf = gzip.open(chromosome_names, 'rt') if chromosome_names.endswith(".gz") else open(chromosome_names, 'rt')
             on_targets = []
             offSeqs = []
-            off_counts = {"GG":[0]*7,"AG":[0]*7,"GA":[0]*7}
+            off_counts = {"GG":[0]*7, "AG":[0]*7, "GA":[0]*7}
             ris_dir = "/".join(offtargets_file.split("/")[:-1])
             ris_file = offtargets_file.split("/")[-1]
             for chrid in chr_inf:
-                sys.stdout.write('#RUNNING: reading given risearch output file "'+"/".join([ris_dir,chrid.rstrip(),ris_file])+'".\n')
-                if os.path.isfile("/".join([ris_dir,chrid.rstrip(),ris_file])):
-                    offSeqs, off_counts, on_targets = read_risearch_results(guideSeq, "/".join([ris_dir,chrid.rstrip(),ris_file]), noPAM_given=noPAM_given, count_mms=count_mms,  on_targets = on_targets, offSeqs = offSeqs, off_counts = off_counts)
+                sys.stdout.write('#RUNNING: reading given risearch output file "'+"/".join([ris_dir, chrid.rstrip(), ris_file])+'".\n')
+                if os.path.isfile("/".join([ris_dir, chrid.rstrip(), ris_file])):
+                    offSeqs, off_counts, on_targets = read_risearch_results(guideSeq, "/".join([ris_dir, chrid.rstrip(), ris_file]), noPAM_given=noPAM_given, count_mms=count_mms, on_targets = on_targets, offSeqs = offSeqs, off_counts = off_counts)
             chr_inf.close()
             return offSeqs, off_counts, on_targets
     else:
-        inf = gzip.open(offtargets_file) if offtargets_file.endswith(".gz") else open(offtargets_file)
+        inf = gzip.open(offtargets_file, 'rt') if offtargets_file.endswith(".gz") else open(offtargets_file, 'rt')
         casoff = True if inf.readline().startswith("#Bulge") else False
         inf.close()
         if casoff:
@@ -372,7 +366,7 @@ def read_offtargets_file(guideSeq, offtargets_file, noPAM_given=False, count_mms
 
 #check if file is fasta
 def is_fasta(filename):
-    with open(filename, "r") as handle:
+    with open(filename, "rt") as handle:
         fasta = SeqIO.parse(handle, "fasta")
         return any(fasta)  # False when `fasta` is empty, i.e. wasn't a FASTA file
 
@@ -388,7 +382,7 @@ def read_guides_fasta(fasta_file):
             x=0
             grna_seq=""
             for i in range(len(seq)):
-                if seq[i] not in ["A","C","G","T","U"]:
+                if seq[i] not in ["A", "C", "G", "T", "U"]:
                     grna_seq =""
                 elif len(grna_seq)<22:
                     grna_seq = grna_seq + seq[i]
@@ -400,7 +394,7 @@ def read_guides_fasta(fasta_file):
                     grna_seq = grna_seq[1:]
             revseq = rev_comp_seq(seq)
             for i in range(len(revseq)):
-                if revseq[i] not in ["A","C","G","T","U"]:
+                if revseq[i] not in ["A", "C", "G", "T", "U"]:
                     grna_seq =""
                 elif len(grna_seq)<22:
                     grna_seq = grna_seq + revseq[i]
@@ -417,13 +411,13 @@ def read_guides_fasta(fasta_file):
     return ontargets
 
 # Read guide sequences from fasta file
-def get_guides(in_file,notfile=False):
+def get_guides(in_file, notfile=False):
     #Read the sequences
     seq=""
     if notfile:
         seq = in_file
     else:
-        with gzip.open(in_file) if in_file.endswith(".gz") else open(in_file) as inf:
+        with gzip.open(in_file, 'rt') if in_file.endswith(".gz") else open(in_file, 'rt') as inf:
             for line in inf:
                 seq = seq + line.rstrip().upper()
 
@@ -435,7 +429,7 @@ def get_guides(in_file,notfile=False):
     x=0
     grna_seq=""
     for i in range(len(seq)):
-        if seq[i] not in ["A","C","G","T","U"]:
+        if seq[i] not in ["A", "C", "G", "T", "U"]:
             grna_seq = ""
         elif len(grna_seq)<22:
             grna_seq = grna_seq + seq[i]
@@ -450,15 +444,15 @@ def get_guides(in_file,notfile=False):
 ## Summarize the features for given on-targets
 def get_energy_features_for_guides(guideSeqs):
     feature_out = {}
-    for guide,guideSeq in guideSeqs.items():
+    for guide, guideSeq in guideSeqs.items():
         feature_out[guide]={}
         feature_out[guide]["RNA_DNA_eng"] = -1.00000 * get_eng(guideSeq, guideSeq, calcRNADNAenergy, GU_allowed=False, pos_weight=False, pam_corr=False, grna_folding=False, dna_opening=False, dna_pos_wgh=False)
         feature_out[guide]["RNA_DNA_eng_weighted"] = -1.00000 * get_eng(guideSeq, guideSeq, calcRNADNAenergy, GU_allowed=False, pos_weight=True, pam_corr=False, grna_folding=False, dna_opening=False, dna_pos_wgh=False)
         feature_out[guide]["DNA_DNA_opening"] = -1.00000 * sum(calcDNAopeningScore(guideSeq))
         feature_out[guide]["spacer_self_fold"] = get_rnafold_eng(guideSeq[:20])
         feature_out[guide]["CRISPRoff_score"] = get_eng(guideSeq, guideSeq, calcRNADNAenergy, GU_allowed=False, pos_weight=True, pam_corr=True, grna_folding=True, dna_opening=True, dna_pos_wgh=False)
-    features=["RNA_DNA_eng","RNA_DNA_eng_weighted","DNA_DNA_opening","spacer_self_fold","CRISPRoff_score"]
-    return features,feature_out
+    features=["RNA_DNA_eng", "RNA_DNA_eng_weighted", "DNA_DNA_opening", "spacer_self_fold", "CRISPRoff_score"]
+    return features, feature_out
 
 ## Summarize the on off target info for given on_targets
 
@@ -561,14 +555,14 @@ def main():
         if args.guide_params_out=="stderr":
             outf = sys.stderr
         elif args.guide_params_out!="stdout":
-            outf = gzip.open(args.guide_params_out,"w") if args.guide_params_out.endswith(".gz") else open(args.guide_params_out,"w")
+            outf = gzip.open(args.guide_params_out, "wt") if args.guide_params_out.endswith(".gz") else open(args.guide_params_out, "wt")
 
         feature_names, feature_values_dic = get_energy_features_for_guides(guideSeqs)
-        outf.write("\t".join(["guideID","guideSeq"]+feature_names)+"\n")
+        outf.write("\t".join(["guideID", "guideSeq"]+feature_names)+"\n")
         for guide, feature_dic in feature_values_dic.items():
-            outf.write("\t".join([guide,guideSeqs[guide]]+[str(feature_dic[feature]) for feature in feature_names])+"\n")
+            outf.write("\t".join([guide, guideSeqs[guide]]+[str(feature_dic[feature]) for feature in feature_names])+"\n")
 
-        if args.guide_params_out not in ["stderr","stdout"]:
+        if args.guide_params_out not in ["stderr", "stdout"]:
             outf.close()
 
         sys.stdout.write('#STEP 4: on-target features have been recorded in "'+args.guide_params_out+'"\n')
@@ -581,7 +575,7 @@ def main():
         ignored_chromosomes=set()
         if args.ignored_chromosomes!=None:
             if os.path.isfile(args.ignored_chromosomes):
-                with open(args.ignored_chromosomes) as inf:
+                with open(args.ignored_chromosomes, 'rt') as inf:
                     for line in inf:
                         ignored_chromosomes.add(line.rstrip())
             else:
@@ -593,13 +587,13 @@ def main():
         if args.specificity_report=="stderr":
             outf = sys.stderr
         elif args.specificity_report!="stdout":
-            outf = gzip.open(args.specificity_report,"w") if args.specificity_report.endswith(".gz") else open(args.specificity_report,"w")
+            outf = gzip.open(args.specificity_report, "wt") if args.specificity_report.endswith(".gz") else open(args.specificity_report, "wt")
 
         # Specificity report output
-        specificity_report = '\t'.join(["Guide_ID","Guide_sequence","On_target_30nt","Genomic_position","CRISPRspec_specificity_score","Azimuth_ontarget_score","MM_counts","MM_detailed\n"])
+        specificity_report = '\t'.join(["Guide_ID", "Guide_sequence", "On_target_30nt", "Genomic_position", "CRISPRspec_specificity_score", "Azimuth_ontarget_score", "MM_counts", "MM_detailed\n"])
         # iterate over all guides
         for guideID, guideSeq in guideSeqs.items():
-            offSeqs, off_counts, ontargets = None,None,None
+            offSeqs, off_counts, ontargets = None, None, None
 
             if args.guides!=None and args.guide!=None and guideSeq!=args.guide:
                 continue
@@ -612,17 +606,17 @@ def main():
                 if len(ontargets)==0:
                     if args.evaluate_all:
                         sys.stderr.write("WARNING: on-target couldn't be found for "+guideID+":"+guideSeq+". Evaluating this guide by adding the guide sequence to the target space.\n")
-                        ontargets.append((guideSeq,guideSeq,None,None,None,None))
+                        ontargets.append((guideSeq, guideSeq, None, None, None, None))
                     else:
                         sys.stderr.write("WARNING: on-target couldn't be found for "+guideID+":"+guideSeq+". Skipping this guide.\n")
                         # Write CRISPRoff results
                         if args.CRISPRoff_scores_folder != None:
                             if os.path.isdir(args.CRISPRoff_scores_folder):
-                                with open(os.path.join(args.CRISPRoff_scores_folder,guideSeq+".CRISPRoff.tsv"),"wb") as score_outf:
+                                with open(os.path.join(args.CRISPRoff_scores_folder, guideSeq+".CRISPRoff.tsv"), "wt") as score_outf:
                                     score_outf.write('# No CRISPRoff and CRISPRspec score can be computed for "'+guideID+","+guideSeq+'"\n')
                                     score_outf.write('# REASON: On-target sequence do not exist within"'+offtargets_file+'".\n')
                         # Specificity report output
-                        specificity_report += '\t'.join([guideID,guideSeq,guideSeq, "NA", "0", "NA", "NA", "NA"+"\n"])
+                        specificity_report += '\t'.join([guideID, guideSeq, guideSeq, "NA", "0", "NA", "NA", "NA"+"\n"])
                         continue
 
                 azimuth_score_dic = {} if args.no_azimuth else get_ontarget_scores_30nt([ontarget[1] for ontarget in ontargets if len(ontarget[1])==30])
@@ -650,29 +644,29 @@ def main():
                     # Write CRISPRoff results
                     if args.CRISPRoff_scores_folder != None:
                         if os.path.isdir(args.CRISPRoff_scores_folder):
-                            with open(os.path.join(args.CRISPRoff_scores_folder,on_target+".CRISPRoff.tsv"),"wb") as score_outf:
+                            with open(os.path.join(args.CRISPRoff_scores_folder, on_target+".CRISPRoff.tsv"), "wt") as score_outf:
                                 score_outf.write('# CRISPRoff scored off-targets of "')
                                 score_outf.write(",".join([on_target]+['NA' if v is None else v for v in [tc, ts, te, tst]])+'"')
                                 score_outf.write(' (Off-targets read from "'+offtargets_file+'").\n')
                                 score_outf.write("# Off-targets are given in bed-like format\n")
-                                score_outf.write("\t".join(["# chromosome","start","end","off_target_seq","CRISPRoff_score","strand"])+"\n")
+                                score_outf.write("\t".join(["# chromosome", "start", "end", "off_target_seq", "CRISPRoff_score", "strand"])+"\n")
 
                                 report_count=0
                                 for offtargets, CRISPRoff in sorted(CRISPRoff_scored_offs, key=lambda x:x[1], reverse=True) if args.sorted_CRISPRoff_reports else CRISPRoff_scored_offs:
                                     report_count += 1
                                     if args.comment_out_NAs and offtargets[1]==None:
-                                        score_outf.write("#"+"\t".join(['NA' if v is None else v for v in list(offtargets[1:4])+[offtargets[0],str(CRISPRoff),offtargets[4]]])+"\n")
+                                        score_outf.write("#"+"\t".join(['NA' if v is None else v for v in list(offtargets[1:4])+[offtargets[0], str(CRISPRoff), offtargets[4]]])+"\n")
                                     else:
-                                        score_outf.write("\t".join(['NA' if v is None else v for v in list(offtargets[1:4])+[offtargets[0],str(CRISPRoff),offtargets[4]]])+"\n")
+                                        score_outf.write("\t".join(['NA' if v is None else v for v in list(offtargets[1:4])+[offtargets[0], str(CRISPRoff), offtargets[4]]])+"\n")
                                     if args.report_top!=None and report_count==args.report_top:
                                         break
 
                     # Prepare text for mismatch count info
                     MM_counts = ",".join([ str(sum([ l[j] for l in off_counts.values()])) for j in range(7)])
-                    MM_detailed = ";".join(["N"+PAM+":"+",".join([ str(off_counts[PAM][j]) for j in range(7)]) for PAM in ["GG","AG","GA"]])
+                    MM_detailed = ";".join(["N"+PAM+":"+",".join([ str(off_counts[PAM][j]) for j in range(7)]) for PAM in ["GG", "AG", "GA"]])
 
                     # Specificity report output
-                    specificity_report += '\t'.join([guideID,guideSeq,on_target_30,"|".join(['NA' if v is None else v for v in [tc, ts, te, tst]]),str(CRISPRspec),azimuth_on, MM_counts, MM_detailed+"\n"])
+                    specificity_report += '\t'.join([guideID, guideSeq, on_target_30, "|".join(['NA' if v is None else v for v in [tc, ts, te, tst]]), str(CRISPRspec), azimuth_on, MM_counts, MM_detailed+"\n"])
 
                     sys.stdout.write('#STEP 5.2: Scores computed and reported for given gRNA and off-targets.\n')
 
@@ -681,7 +675,7 @@ def main():
 
         # Write the specificity report
         sys.stdout.write('#STEP 5.3: Reporting the specificity scores')
-        if args.specificity_report in ["stdout","stderr"]:
+        if args.specificity_report in ["stdout", "stderr"]:
             outf.write(" below.\n\n"+specificity_report+"\n")
         else:
             sys.stdout.write(" and saving into '"+args.specificity_report+"' file.\n")

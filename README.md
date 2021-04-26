@@ -8,11 +8,7 @@ Off-targeting assessment of CRISPR-Cas9 gRNAs/on-targets
 * Python 2.7
 * Biopython
 * Vienna RNA Package (preferably 2.2.5): the script will call the RNAfold program when used
-* Python libraries (optional): azimuth, numpy
-
-Optional libraries are not necessary when you run the pipeline with
-"--no_azimuth" option. However, without azimuth installed the pipeline won't
-report azimuth on-target efficiency prediction scores.
+* Nb if you wish to use the azimuth on-target scores you should download version 1.1.1
 
 ### Usage
 This pipeline DO NOT perform off-target predictions itself. It only computes
@@ -87,7 +83,7 @@ predictions for your gRNA and pass this result file to the pipeline with
  [Citation comes here]
 
 ### Copyright
-Copyright 2018 by the contributors (see AUTHORS file)
+Copyright 2018, 2021 by the contributors (see AUTHORS file)
 
 This is a free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

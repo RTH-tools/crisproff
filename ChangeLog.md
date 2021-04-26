@@ -1,3 +1,7 @@
+##v 1.1.2 - 2021-04-26
+- Ported to python3
+- updated test data output
+- added test.sh
 ##v 1.1.1 - 2018-09-06
 - Resolving a bug in on-target detection from risearch results
 - Structuring the messy stdout and stderr output
