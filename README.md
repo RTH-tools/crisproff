@@ -1,7 +1,7 @@
 # crisproff
 Off-targeting assessment of CRISPR-Cas9 gRNAs/on-targets
 
-## CRISPRspec and CRISPRoff scores computation pipeline v1.1.1
+## CRISPRspec and CRISPRoff scores computation pipeline v1.1.2
 ================================================================================
 
 ### Prerequisites
