@@ -101,5 +101,4 @@ If not, see <http://www.gnu.org/licenses/>.
 
 
 ### Contact
-ferro@rth.dk
-gorodkin@rth.dk
+software+crispr@rth.dk
