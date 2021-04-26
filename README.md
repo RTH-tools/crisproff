@@ -80,7 +80,8 @@ predictions for your gRNA and pass this result file to the pipeline with
  If you find this software useful for your research,
  please cite the following work:
 
- [Citation comes here]
+**CRISPR-Cas9 off-targeting assessment with nucleic acid duplex energy parameters**  
+Alkan F, Wenzel A, Anthon C, Havgaard JH, Gorodkin J Genome Biol. 2018 Oct 26;19(1):177
 
 ### Copyright
 Copyright 2018, 2021 by the contributors (see AUTHORS file)
